@@ -1,25 +1,32 @@
 {
   "name": "nutoff-wallet",
-  "module": "index.ts",
+  "module": "src/index.ts",
   "type": "module",
   "private": true,
   "bin": {
-    "cashu": "./index.ts"
+    "cashu-mcp-server": "./src/index.ts"
   },
   "scripts": {
-    "format": "bun run prettier --write ."
+    "build": "bun build src/index.ts --outdir dist --target bun",
+    "dev": "bun run src/index.ts",
+    "start": "bun run src/index.ts",
+    "test": "bun test",
+    "format": "bun run prettier --write src"
   },
   "devDependencies": {
     "@types/bun": "latest",
     "prettier": "^3.6.2"
   },
   "peerDependencies": {
-    "typescript": "^5.9.2"
+    "typescript": "^5.9.3"
   },
   "dependencies": {
-    "@cashu/cashu-ts": "^2.7.1",
-    "@contextvm/sdk": "^0.1.27",
-    "@modelcontextprotocol/sdk": "^1.17.5",
+    "@cashu/cashu-ts": "^3.0.2",
+    "@modelcontextprotocol/sdk": "^1.20.2",
+    "@scure/bip39": "^2.0.1",
+    "coco-cashu-core": "^1.0.0-rc.17",
+    "coco-cashu-sqlite3": "^1.0.0-rc.17",
+    "sqlite3": "^5.1.7",
     "zod": "^3.25.76"
   }
 }

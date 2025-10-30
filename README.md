@@ -1,239 +1,96 @@
-⚠️ This project is for educational and testing purposes. Use at your own risk.
+# Cashu Wallet MCP Server
 
-# Nutoff Wallet
-
-A command-line interface and MCP server interface implementing a Cashu wallet, built with TypeScript, ContextVM, Cashu-ts, and Bun. This wallet allows you to mint, send, receive, and manage eCash tokens. Also thanks to the MCP interface and the nostr transport provided by the ContextVM sdk you can use and manage your wallet remotely
+A Model Context Protocol (MCP) server that provides a complete NWC (Nostr Wallet Connect) API implementation for Cashu wallets using the Coco Cashu TypeScript library.
 
 ## Features
 
-- **Wallet Management**: Create and manage eCash wallets with persistent state
-- **Mint Operations**: Create mint quotes, check their status, and mint eCash proofs
-- **Send/Receive**: Send eCash tokens to others and receive tokens from them
-- **Lightning Payments**: Pay Lightning invoices using your eCash balance
-- **Balance Tracking**: Monitor your wallet balance and pending transactions
-- **Environment Configuration**: Customize mint URLs and wallet file locations
-- **NWC API Compatibility**: Partial Nostr Wallet Connect (NWC) API support for integration with NWC clients
+- **Complete NWC API Support**: Implements all standard NWC methods:
+  - `pay_invoice` - Pay BOLT11 invoices using melt quotes
+  - `make_invoice` - Create invoices for receiving payments using mint quotes
+  - `lookup_invoice` - Check invoice/quote status
+  - `list_transactions` - List transaction history
+  - `get_balance` - Get current wallet balance
 
-## Prerequisites
+- **Coco Cashu Integration**: Leverages the full power of Coco Cashu's deterministic wallet architecture
+- **Trust-Based Mint Model**: Secure mint management with explicit trust requirements
+- **Event-Driven Architecture**: Real-time updates via WebSockets and polling
+- **SQLite Persistence**: Reliable data storage with automatic quote processing
+- **MCP Protocol Compliance**: Full compatibility with MCP clients and tools
 
-- [Bun](https://bun.sh/) runtime installed
-- Node.js compatibility (for some dependencies)
+## Architecture
+
+The server follows a clean, layered architecture:
+
+```
+MCP Client → MCP Server → Service Layer → Coco Cashu → SQLite Database
+```
+
+### Core Components
+
+- **MCP Server**: Handles protocol communication and tool registration
+- **Service Layer**:
+  - `WalletService`: Wallet initialization and balance management
+  - `QuoteService`: Mint and melt quote operations
+  - `TransactionService`: Transaction history and lookup
+- **Configuration**: Environment-only configuration with secure seed generation
 
 ## Installation
 
-1. Clone or download this repository
-2. Install dependencies:
-   ```bash
-   bun install
-   ```
+```bash
+# Clone the repository
+git clone <repository-url>
+cd cocoloco
+
+# Install dependencies
+bun install
+```
+
+## Configuration
+
+The server uses environment variables for configuration. All configuration is optional - if no seed is provided, a secure BIP-39 mnemonic will be automatically generated and saved to a `.env` file.
+
+### Environment Variables
+
+Copy `.env.example` to `.env` and update the values:
+
+```bash
+# Copy the example file
+cp .env.example .env
+
+# Edit the .env file with your preferred values
+```
+
+**Available Environment Variables:**
+
+- `COCO_SEED`: BIP-39 mnemonic seed phrase (optional - will be auto-generated if not provided)
+- `COCO_DATABASE_PATH`: Database file path (default: `"./coco.db"`)
+- `COCO_DEFAULT_MINT`: Default mint URL for operations (optional)
+- `MCP_SERVER_NAME`: MCP server name (default: `"cashu-wallet-mcp-server"`)
+- `MCP_SERVER_VERSION`: MCP server version (default: `"1.0.0"`)
+- `LOG_LEVEL`: Logging level (default: `"info"`)
+
+### First-Time Setup
+
+When you run the server for the first time without a seed:
+
+1. A secure 12-word BIP-39 mnemonic will be automatically generated
+2. The mnemonic will be displayed in the console for you to save securely
+3. It will be automatically saved to your `.env` file for future use
+4. You can also manually set the `COCO_SEED` environment variable
+
+**Security Note:** Always backup your seed phrase! It's your wallet backup - lose it and you lose access to your funds.
 
 ## Usage
 
-### Basic Commands
-
-Show help and available commands:
+### Running the Server
 
 ```bash
-bun run index.ts
+# Development mode
+bun run dev
+
+# Production mode
+bun run start
+
+# Build for distribution
+bun run build
 ```
-
-Check wallet balance:
-
-```bash
-bun run index.ts get-balance
-```
-
-### Minting eCash (Simplified)
-
-One-step minting - creates quote, waits for payment, and mints automatically:
-
-```bash
-bun run index.ts mint 100
-```
-
-### Advanced Minting (Manual Steps)
-
-Create a mint quote for 100 sats:
-
-```bash
-bun run index.ts create-mint 100
-```
-
-Check the status of a mint quote:
-
-```bash
-bun run index.ts check-mint-quote <quote-id>
-```
-
-Mint proofs from a paid quote:
-
-```bash
-bun run index.ts mint-proofs <quote-id> <amount>
-```
-
-### Sending and Receiving
-
-Send eCash to someone:
-
-```bash
-bun run index.ts send 50
-```
-
-Receive eCash from a token:
-
-```bash
-bun run index.ts receive <cashu-token>
-```
-
-### Lightning Payments
-
-Pay a Lightning invoice:
-
-```bash
-bun run index.ts pay <lightning-invoice>
-```
-
-### Wallet Maintenance
-
-Clean up redeemed pending proofs - automatically removes proofs that have been redeemed:
-
-```bash
-bun run index.ts clean-pending
-```
-
-**Note**: `get-balance` automatically checks and cleans pending proofs!
-
-## Environment Variables
-
-Configure the wallet using environment variables:
-
-- `CASHU_MINT_URL`: The mint URL to use (default: https://testnut.cashu.space)
-- `CASHU_WALLET_DB`: Path to the wallet database file (default: ./wallet.sqlite)
-
-### LUD06 Configuration (for Lightning Address / LNURL-pay compatibility)
-
-The `get_info` method returns LUD06-compliant responses for Lightning Address integration:
-
-- `LUD06_CALLBACK`: Callback URL for LNURL-pay requests (default: empty string)
-- `LUD06_MAX_SENDABLE`: Maximum amount in millisatoshis (default: 1000000000)
-- `LUD06_MIN_SENDABLE`: Minimum amount in millisatoshis (default: 1000)
-- `LUD06_METADATA`: Metadata JSON string for LNURL-pay (default: empty array)
-- `LUD06_TAG`: LNURL tag (default: "payRequest")
-
-Example:
-
-```bash
-CASHU_MINT_URL=https://your-mint.example.com \
-LUD06_CALLBACK=https://your-service.com/lnurl-pay/callback \
-LUD06_MAX_SENDABLE=1000000000 \
-LUD06_MIN_SENDABLE=1000 \
-LUD06_METADATA='[["text/plain", "Pay to my Cashu wallet"]]' \
-bun run index.ts get-balance
-```
-
-See `example.env` for a complete configuration template.
-
-## Wallet Database
-
-The wallet state is persisted in a SQLite database file with the following structure:
-
-- **cashu_mints**: Mint information and metadata
-- **cashu_keysets**: Keyset information for each mint
-- **cashu_counters**: Spending counters for keysets
-- **cashu_proofs**: Your eCash proofs with states (inflight, ready, spent)
-- **cashu_mint_quotes**: Mint quotes and their payment status
-
-## Testing
-
-Run the comprehensive test suite:
-
-```bash
-bun test
-```
-
-Run specific test file:
-
-```bash
-bun test wallet.test.ts
-```
-
-## NWC API Support
-
-The wallet now supports the full Nostr Wallet Connect (NWC) API specification, making it compatible with NWC clients and tools.
-
-### NWC API Methods
-
-- `get_balance` - Get wallet balance in millisatoshis
-- `get_info` - Get wallet information and supported methods
-- `make_invoice` - Create Lightning invoices for receiving payments
-- `lookup_invoice` - Check invoice status and details
-- `pay_invoice` - Pay Lightning invoices
-
-## Example Workflow
-
-1. **Create a new wallet** (automatically created on first use):
-
-   ```bash
-   bun run index.ts get-balance
-   ```
-
-2. **Mint some eCash** (using simplified one-step process):
-
-   ```bash
-   bun run index.ts mint 1000
-   # The command will wait for payment and mint automatically
-   ```
-
-   Or use the manual process:
-
-   ```bash
-   bun run index.ts create-mint 1000
-   # Pay the Lightning invoice that is generated
-   bun run index.ts check-mint-quote <quote-id>
-   bun run index.ts mint-proofs <quote-id> 1000
-   ```
-
-3. **Check your balance** (auto-cleans pending proofs):
-
-   ```bash
-   bun run index.ts get-balance
-   ```
-
-4. **Send eCash to someone**:
-
-   ```bash
-   bun run index.ts send 500
-   # Share the generated Cashu token with the recipient
-   ```
-
-5. **Receive eCash**:
-
-   ```bash
-   bun run index.ts receive <cashu-token-from-sender>
-   ```
-
-6. **Clean up redeemed proofs** (or let get-balance do it automatically):
-   ```bash
-   bun run index.ts clean-pending
-   ```
-
-## Security Notes
-
-- Keep your wallet database secure and backed up
-- The wallet database contains your eCash proofs - treat it like cash
-- Test with small amounts first
-- Use reputable mints
-
-## Development
-
-The project structure:
-
-- `service.ts` - Wallet service implementation
-- `index.ts` - CLI interface for the cashu wallet
-- `cli.ts` - CLI implementation of the cashu wallet
-- `mcp-server.ts` - MCP interface for the cashu wallet, using ContextVM Nostr Server Transport
-- `db.ts` - Database utils for the cashu wallet
-
-## License
-
-This project is for educational and testing purposes. Use at your own risk.
