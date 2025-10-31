@@ -13,13 +13,12 @@ async function main() {
     const config = await configService.loadConfig();
 
     // Initialize MCP server
-    const mcpServer = new CashuMcpServer(config.mcp);
+    const mcpServer = new CashuMcpServer(config);
 
     // Initialize wallet with configuration
     await mcpServer.initializeWallet({
       seed: config.wallet.seed,
       databasePath: config.wallet.databasePath,
-      trustedMints: config.wallet.trustedMints,
     });
 
     // Start the MCP server

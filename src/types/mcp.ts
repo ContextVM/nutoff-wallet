@@ -15,8 +15,6 @@ export const ServerConfigSchema = z.object({
   wallet: z.object({
     seed: z.string(),
     databasePath: z.string(),
-    defaultMint: z.string().optional(),
-    trustedMints: z.array(z.string()),
   }),
   mcp: McpServerConfigSchema,
   logging: z
@@ -24,6 +22,9 @@ export const ServerConfigSchema = z.object({
       level: z.enum(["debug", "info", "warn", "error"]),
     })
     .optional(),
+  serverPrivateKey: z.string().optional(),
+  serverRelays: z.array(z.string()),
+  allowedPublicKeys: z.array(z.string()),
 });
 
 export type ServerConfig = z.infer<typeof ServerConfigSchema>;
@@ -48,18 +49,6 @@ export function createConfigurationError(message: string): Error {
   return createMcpError("CONFIGURATION_ERROR", message);
 }
 
-// Default Configuration
-export const DEFAULT_SERVER_CONFIG: Partial<ServerConfig> = {
-  mcp: {
-    name: "cashu-wallet-mcp-server",
-    version: "1.0.0",
-    description: "MCP server for Cashu wallet operations using Coco Cashu",
-  },
-  logging: {
-    level: "info" as const,
-  },
-};
-
 // Environment Variables Schema
 export const EnvConfigSchema = z.object({
   COCO_SEED: z.string().optional(),
@@ -68,6 +57,9 @@ export const EnvConfigSchema = z.object({
   MCP_SERVER_NAME: z.string().default("cashu-wallet-mcp-server"),
   MCP_SERVER_VERSION: z.string().default("1.0.0"),
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
+  SERVER_PRIVATE_KEY: z.string().optional(),
+  SERVER_RELAYS: z.string().default("ws://localhost:10547"),
+  ALLOWED_PUBLIC_KEYS: z.string().default(""),
 });
 
 export type EnvConfig = z.infer<typeof EnvConfigSchema>;

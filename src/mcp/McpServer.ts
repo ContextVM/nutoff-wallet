@@ -2,7 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 
-import type { McpServerConfig, ToolHandlerContext } from "../types/mcp.js";
+import type { ServerConfig, ToolHandlerContext } from "../types/mcp.js";
 import {
   PayInvoiceParamsSchema,
   MakeInvoiceParamsSchema,
@@ -25,9 +25,6 @@ import {
   SendCashuResultSchema,
 } from "../types/wallet-api.js";
 import { WalletService } from "../services/WalletService.js";
-import type { HistoryEntry, MintQuote } from "coco-cashu-core";
-import type { MeltQuote } from "../types/wallet-api.js";
-import { getEncodedToken } from "@cashu/cashu-ts";
 import {
   handleAddMint,
   handleGetBalance,
@@ -42,16 +39,22 @@ import {
   handleTrustMint,
   handleUntrustMint,
 } from "./toolHandlers.js";
+import {
+  ApplesauceRelayPool,
+  NostrServerTransport,
+  PrivateKeySigner,
+} from "@contextvm/sdk";
 
 export class CashuMcpServer {
   private server: McpServer;
   private walletService: WalletService;
-  private transport: StdioServerTransport | null = null;
+  private config: ServerConfig;
 
-  constructor(config: McpServerConfig) {
+  constructor(config: ServerConfig) {
+    this.config = config;
     this.server = new McpServer({
-      name: config.name,
-      version: config.version,
+      name: config.mcp.name,
+      version: config.mcp.version,
     });
 
     // Initialize services
@@ -439,7 +442,6 @@ export class CashuMcpServer {
   async initializeWallet(config: {
     seed: string;
     databasePath: string;
-    trustedMints: string[];
   }): Promise<void> {
     await this.walletService.initialize(config);
 
@@ -449,16 +451,28 @@ export class CashuMcpServer {
   }
 
   async start(): Promise<void> {
-    this.transport = new StdioServerTransport();
-    await this.server.connect(this.transport);
+    const transport = new NostrServerTransport({
+      relayHandler: new ApplesauceRelayPool(this.config.serverRelays),
+      signer: this.config.serverPrivateKey
+        ? new PrivateKeySigner(this.config.serverPrivateKey)
+        : new PrivateKeySigner(),
+      allowedPublicKeys: this.config.allowedPublicKeys,
+      excludedCapabilities: [
+        {
+          method: "tools/call",
+          name: "make_invoice",
+        },
+      ],
+    });
+    // const transport = new StdioServerTransport();
+    await this.server.connect(transport);
     console.error("Cashu MCP Server started");
+    console.error("SERVER PUBLIC KEY:", await transport["getPublicKey"]());
   }
 
   async stop(): Promise<void> {
-    if (this.transport) {
-      if (typeof this.transport.close === "function") {
-        await this.transport.close();
-      }
+    if (this.server) {
+      await this.server.close();
     }
     await this.walletService.cleanup();
   }

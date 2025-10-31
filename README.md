@@ -16,6 +16,7 @@ A Model Context Protocol (MCP) server that provides a complete NWC (Nostr Wallet
 - **Event-Driven Architecture**: Real-time updates via WebSockets and polling
 - **SQLite Persistence**: Reliable data storage with automatic quote processing
 - **MCP Protocol Compliance**: Full compatibility with MCP clients and tools
+- **Flexible Configuration**: Environment-based configuration with secure defaults
 
 ## Architecture
 
@@ -32,7 +33,7 @@ MCP Client → MCP Server → Service Layer → Coco Cashu → SQLite Database
   - `WalletService`: Wallet initialization and balance management
   - `QuoteService`: Mint and melt quote operations
   - `TransactionService`: Transaction history and lookup
-- **Configuration**: Environment-only configuration with secure seed generation
+- **Configuration**: Environment-based configuration with secure defaults
 
 ## Installation
 
@@ -47,7 +48,7 @@ bun install
 
 ## Configuration
 
-The server uses environment variables for configuration. All configuration is optional - if no seed is provided, a secure BIP-39 mnemonic will be automatically generated and saved to a `.env` file.
+The server uses environment variables for configuration with sensible defaults. All configuration is optional - if no seed is provided, a secure BIP-39 mnemonic will be automatically generated and saved to a `.env` file.
 
 ### Environment Variables
 
@@ -68,6 +69,9 @@ cp .env.example .env
 - `MCP_SERVER_NAME`: MCP server name (default: `"cashu-wallet-mcp-server"`)
 - `MCP_SERVER_VERSION`: MCP server version (default: `"1.0.0"`)
 - `LOG_LEVEL`: Logging level (default: `"info"`)
+- `SERVER_PRIVATE_KEY`: Nostr server private key in hex format (required for Nostr transport) If not provided, a new key will be generated each time the server starts
+- `SERVER_RELAYS`: Comma-separated Nostr relay URLs (default: `"wss://relay.contextvm.org"`)
+- `ALLOWED_PUBLIC_KEYS`: Comma-separated allowed public keys (empty = allow all). Highly recommended to set this to a specific public key or set of public keys
 
 ### First-Time Setup
 
@@ -85,10 +89,7 @@ When you run the server for the first time without a seed:
 ### Running the Server
 
 ```bash
-# Development mode
-bun run dev
-
-# Production mode
+# Start the server
 bun run start
 
 # Build for distribution

@@ -5,53 +5,41 @@ import { existsSync } from "fs";
 import { join } from "path";
 
 import type { ServerConfig, EnvConfig } from "../types/mcp.js";
-import {
-  ServerConfigSchema,
-  EnvConfigSchema,
-  DEFAULT_SERVER_CONFIG,
-} from "../types/mcp.js";
+import { ServerConfigSchema, EnvConfigSchema } from "../types/mcp.js";
 import { createConfigurationError } from "../types/mcp.js";
 
 export class ConfigService {
   private config: ServerConfig | null = null;
 
-  constructor() {
-    // No config path needed - environment variables only
-  }
-
   async loadConfig(): Promise<ServerConfig> {
     try {
-      // Load environment variables
       const envConfig = this.loadEnvConfig();
-
-      // Generate secure seed if not provided
       const seed = envConfig.COCO_SEED || (await this.generateSecureSeed());
 
-      // Build configuration from environment variables only
-      const mergedConfig: Partial<ServerConfig> = {
-        ...DEFAULT_SERVER_CONFIG,
+      // Build configuration directly from environment variables
+      const config = ServerConfigSchema.parse({
         wallet: {
-          seed: seed,
+          seed,
           databasePath: envConfig.COCO_DATABASE_PATH,
-          defaultMint: envConfig.COCO_DEFAULT_MINT,
-          trustedMints: [], // Trusted mints are managed by WalletService, not config
         },
         mcp: {
           name: envConfig.MCP_SERVER_NAME,
           version: envConfig.MCP_SERVER_VERSION,
-          description: DEFAULT_SERVER_CONFIG.mcp!.description,
+          description:
+            "MCP server for Cashu wallet operations using Coco Cashu",
         },
         logging: {
           level: envConfig.LOG_LEVEL,
         },
-      };
+        serverPrivateKey: envConfig.SERVER_PRIVATE_KEY,
+        serverRelays: this.parseCommaSeparatedList(envConfig.SERVER_RELAYS),
+        allowedPublicKeys: this.parseCommaSeparatedList(
+          envConfig.ALLOWED_PUBLIC_KEYS,
+        ),
+      });
 
-      // Validate the configuration
-      this.config = ServerConfigSchema.parse(mergedConfig);
-
-      console.error(
-        "Configuration loaded successfully from environment variables",
-      );
+      this.config = config;
+      console.error("Configuration loaded successfully");
       return this.config;
     } catch (error) {
       throw createConfigurationError(
@@ -75,10 +63,6 @@ export class ConfigService {
     return this.getConfig().wallet.seed;
   }
 
-  getTrustedMints(): string[] {
-    return this.getConfig().wallet.trustedMints;
-  }
-
   isInitialized(): boolean {
     return this.config !== null;
   }
@@ -91,7 +75,18 @@ export class ConfigService {
       MCP_SERVER_NAME: process.env.MCP_SERVER_NAME,
       MCP_SERVER_VERSION: process.env.MCP_SERVER_VERSION,
       LOG_LEVEL: process.env.LOG_LEVEL,
+      SERVER_PRIVATE_KEY: process.env.SERVER_PRIVATE_KEY,
+      SERVER_RELAYS: process.env.SERVER_RELAYS,
+      ALLOWED_PUBLIC_KEYS: process.env.ALLOWED_PUBLIC_KEYS,
     });
+  }
+
+  private parseCommaSeparatedList(value: string): string[] {
+    if (!value?.trim()) return [];
+    return value
+      .split(",")
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0);
   }
 
   private async generateSecureSeed(): Promise<string> {
