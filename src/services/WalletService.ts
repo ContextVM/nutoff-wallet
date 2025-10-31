@@ -1,7 +1,14 @@
-import { initializeCoco, type Manager } from "coco-cashu-core";
+import {
+  initializeCoco,
+  type HistoryEntry,
+  type Manager,
+  type MeltQuote,
+  type MintQuote,
+} from "coco-cashu-core";
 import { SqliteRepositories } from "coco-cashu-sqlite3";
 import { Database } from "sqlite3";
 import * as bip39 from "@scure/bip39";
+import { type Token } from "@cashu/cashu-ts";
 
 import type {
   CocoWalletConfig,
@@ -13,25 +20,16 @@ import type {
   RemoveMintParams,
   MintInfo,
   MintsListResult,
+  TransactionFilters,
 } from "../types/wallet-api.js";
 import { createWalletApiError } from "../types/wallet-api.js";
-import {
-  type MeltQuoteResponse,
-  type MintQuoteResponse,
-  type Token,
-} from "@cashu/cashu-ts";
-import { QuoteService } from "./QuoteService.js";
-import { EventService } from "./EventService.js";
-import type { ServiceLifecycle } from "../types/service-lifecycle.js";
 import { ServiceUtils } from "../utils/ServiceUtils.js";
 import { getDefaultMintUrl } from "../utils/MintUtils.js";
 import { webSocketFactory } from "./WebSocketFactory.js";
 
-export class WalletService implements ServiceLifecycle {
+export class WalletService {
   private manager: Manager | null = null;
   private database: Database | null = null;
-  private quoteService: QuoteService = new QuoteService();
-  private eventService: EventService = new EventService();
   private repositories: SqliteRepositories | null = null;
 
   getManager(): Manager | null {
@@ -40,14 +38,6 @@ export class WalletService implements ServiceLifecycle {
 
   getRepositories(): SqliteRepositories | null {
     return this.repositories;
-  }
-
-  getEventService(): EventService {
-    return this.eventService;
-  }
-
-  getQuoteService(): QuoteService {
-    return this.quoteService;
   }
 
   async initialize(config: CocoWalletConfig): Promise<void> {
@@ -62,23 +52,13 @@ export class WalletService implements ServiceLifecycle {
         return bip39.mnemonicToSeedSync(config.seed);
       };
 
-      // Initialize Coco using the proper API from docs/node-example.md:68-72
-      // This automatically enables watchers and processors with proper defaults
       this.manager = await initializeCoco({
         repo: this.repositories,
         seedGetter,
         webSocketFactory,
       });
 
-      // Initialize event service with manager
-      await this.eventService.initialize(this.manager);
-
-      // Initialize quote service with manager
-      await this.quoteService.initialize(this.manager, this.repositories);
-
-      console.error(
-        "WalletService initialized successfully with WebSocket subscriptions and event monitoring",
-      );
+      await this.enableQuoteWatchers();
     } catch (error) {
       throw createWalletApiError(
         "WALLET_INIT_FAILED",
@@ -86,6 +66,24 @@ export class WalletService implements ServiceLifecycle {
         error instanceof Error ? error : undefined,
       );
     }
+  }
+
+  private async enableQuoteWatchers(): Promise<void> {
+    const manager = ServiceUtils.validateServiceInitialized(
+      this.manager,
+      "Quote service",
+    );
+
+    return await ServiceUtils.withServiceError(async () => {
+      // Enable mint quote watcher for real-time updates
+      await manager.enableMintQuoteWatcher();
+
+      // Enable mint quote processor for automatic redemption
+      await manager.enableMintQuoteProcessor();
+
+      // Enable proof state watcher for comprehensive state tracking
+      await manager.enableProofStateWatcher();
+    }, "enable quote watchers");
   }
 
   async getBalance(): Promise<BalanceResult> {
@@ -101,51 +99,16 @@ export class WalletService implements ServiceLifecycle {
       let total = 0;
       for (const mintUrl in balances) {
         const balance = balances[mintUrl];
-        console.error(`Mint ${mintUrl}: balance ${balance}`);
         if (balance !== undefined) {
           total += balance;
         }
       }
 
-      console.error("Total balance calculated:", total);
-
       return {
-        total: total,
+        total,
         breakdown: balances,
       };
     }, "get balance");
-  }
-
-  async addTrustedMint(mintUrl: string): Promise<void> {
-    const manager = ServiceUtils.validateServiceInitialized(
-      this.manager,
-      "Wallet service",
-    );
-
-    return await ServiceUtils.withServiceError(
-      async () => {
-        // Add and trust the mint
-        await manager.mint.addMint(mintUrl, { trusted: true });
-        console.error(`Added and trusted mint: ${mintUrl}`);
-      },
-      "add trusted mint",
-      { mintUrl },
-    );
-  }
-
-  async getAllTrustedMints(): Promise<string[]> {
-    const manager = ServiceUtils.validateServiceInitialized(
-      this.manager,
-      "Wallet service",
-    );
-
-    return await ServiceUtils.withServiceError(async () => {
-      const trustedMints = await manager.mint.getAllTrustedMints();
-      // Extract URLs from mint objects
-      return trustedMints.map((mint: { mintUrl: string }) => {
-        return mint.mintUrl;
-      });
-    }, "get all trusted mints");
   }
 
   async restore(mintUrl?: string): Promise<void> {
@@ -157,10 +120,8 @@ export class WalletService implements ServiceLifecycle {
     return await ServiceUtils.withServiceError(
       async () => {
         if (mintUrl) {
-          // Restore specific mint
           await manager.wallet.restore(mintUrl);
         } else {
-          // Restore all trusted mints
           const trustedMints = await this.getAllTrustedMints();
           for (const mint of trustedMints) {
             await manager.wallet.restore(mint);
@@ -188,45 +149,7 @@ export class WalletService implements ServiceLifecycle {
     return this.isInitialized();
   }
 
-  async createMintQuote(
-    mintUrl: string,
-    amount: number,
-  ): Promise<MintQuoteResponse> {
-    const manager = ServiceUtils.validateServiceInitialized(
-      this.manager,
-      "Wallet service",
-    );
-    return await manager.quotes.createMintQuote(mintUrl, amount);
-  }
-
-  async createMeltQuote(
-    mintUrl: string,
-    invoice: string,
-  ): Promise<MeltQuoteResponse> {
-    const manager = ServiceUtils.validateServiceInitialized(
-      this.manager,
-      "Wallet service",
-    );
-    return await manager.quotes.createMeltQuote(mintUrl, invoice);
-  }
-
-  async payMeltQuote(mintUrl: string, quoteId: string): Promise<void> {
-    const manager = ServiceUtils.validateServiceInitialized(
-      this.manager,
-      "Wallet service",
-    );
-    await manager.quotes.payMeltQuote(mintUrl, quoteId);
-  }
-
-  async redeemMintQuote(mintUrl: string, quoteId: string): Promise<void> {
-    const manager = ServiceUtils.validateServiceInitialized(
-      this.manager,
-      "Wallet service",
-    );
-    await manager.quotes.redeemMintQuote(mintUrl, quoteId);
-  }
-
-  public async resolveMintUrl(mintUrl?: string): Promise<string> {
+  async resolveMintUrl(mintUrl?: string): Promise<string> {
     const manager = ServiceUtils.validateServiceInitialized(
       this.manager,
       "Wallet service",
@@ -268,10 +191,6 @@ export class WalletService implements ServiceLifecycle {
       this.manager,
       "Wallet service",
     );
-    ServiceUtils.validateDependencies(
-      { repositories: this.repositories },
-      "Wallet service",
-    );
 
     return await ServiceUtils.withServiceError(
       async () => {
@@ -287,15 +206,11 @@ export class WalletService implements ServiceLifecycle {
         }
 
         // Convert Coco Cashu Mint objects to our MintInfo schema
-        const mints: MintInfo[] = await Promise.all(
-          filteredMints.map(async (mint) => {
-            return {
-              mintUrl: mint.mintUrl,
-              trusted: mint.trusted,
-              lastChecked: mint.updatedAt,
-            };
-          }),
-        );
+        const mints: MintInfo[] = filteredMints.map((mint) => ({
+          mintUrl: mint.mintUrl,
+          trusted: mint.trusted,
+          lastChecked: mint.updatedAt,
+        }));
 
         const trustedCount = allMints.filter((mint) => mint.trusted).length;
         const untrustedCount = allMints.filter((mint) => !mint.trusted).length;
@@ -317,25 +232,14 @@ export class WalletService implements ServiceLifecycle {
       this.manager,
       "Wallet service",
     );
-    ServiceUtils.validateDependencies(
-      { repositories: this.repositories },
-      "Wallet service",
-    );
 
     return await ServiceUtils.withServiceError(
       async () => {
-        // Use existing Coco Cashu Manager method to trust mint
         await manager.mint.trustMint(params.mintUrl);
 
-        // Get the updated mint info
-        const mint = await this.repositories!.mintRepository.getMintByUrl(
-          params.mintUrl,
-        );
-
         return {
-          mintUrl: mint.mintUrl,
-          trusted: mint.trusted,
-          lastChecked: mint.updatedAt,
+          mintUrl: params.mintUrl,
+          trusted: true,
         };
       },
       "trust mint",
@@ -346,10 +250,6 @@ export class WalletService implements ServiceLifecycle {
   async untrustMint(params: UntrustMintParams): Promise<MintInfo> {
     const manager = ServiceUtils.validateServiceInitialized(
       this.manager,
-      "Wallet service",
-    );
-    ServiceUtils.validateDependencies(
-      { repositories: this.repositories },
       "Wallet service",
     );
 
@@ -375,15 +275,6 @@ export class WalletService implements ServiceLifecycle {
   }
 
   async removeMint(params: RemoveMintParams): Promise<void> {
-    const manager = ServiceUtils.validateServiceInitialized(
-      this.manager,
-      "Wallet service",
-    );
-    ServiceUtils.validateDependencies(
-      { repositories: this.repositories },
-      "Wallet service",
-    );
-
     return await ServiceUtils.withServiceError(
       async () => {
         // Use existing Coco Cashu Manager method to remove mint
@@ -392,6 +283,19 @@ export class WalletService implements ServiceLifecycle {
       "remove mint",
       { mintUrl: params.mintUrl },
     );
+  }
+
+  async getAllTrustedMints(): Promise<string[]> {
+    const manager = ServiceUtils.validateServiceInitialized(
+      this.manager,
+      "Wallet service",
+    );
+
+    return await ServiceUtils.withServiceError(async () => {
+      const trustedMints = await manager.mint.getAllTrustedMints();
+      // Extract URLs from mint objects
+      return trustedMints.map((mint) => mint.mintUrl);
+    }, "get all trusted mints");
   }
 
   // ============================================================================
@@ -407,10 +311,8 @@ export class WalletService implements ServiceLifecycle {
 
     return await ServiceUtils.withServiceError(
       async () => {
-        // Use Coco Cashu Manager's receive method
         await manager.wallet.receive(token);
 
-        // TODO: To get the amount we should use the proper coco cashu core event
         return {
           success: true,
         };
@@ -441,13 +343,102 @@ export class WalletService implements ServiceLifecycle {
         const token = await manager.wallet.send(targetMintUrl, amount);
 
         return {
-          token: token,
+          token,
           amount,
           mintUrl: targetMintUrl,
         };
       },
       "send tokens",
       { amount, mintUrl },
+    );
+  }
+
+  // ============================================================================
+  // Transaction Management Methods
+  // ============================================================================
+
+  async listTransactions(
+    filters: TransactionFilters = {},
+  ): Promise<HistoryEntry[]> {
+    const manager = ServiceUtils.validateServiceInitialized(
+      this.manager,
+      "Transaction service",
+    );
+
+    return await ServiceUtils.withServiceError(
+      async () => {
+        // Get paginated history entries from the database
+        const limit = filters.limit || 100;
+        const offset = filters.offset || 0;
+
+        const historyEntries = await manager.history.getPaginatedHistory(
+          offset,
+          limit,
+        );
+
+        return historyEntries;
+      },
+      "list transactions",
+      { limit: filters.limit, offset: filters.offset },
+    );
+  }
+
+  async getTransaction(quoteId: string): Promise<HistoryEntry | null> {
+    const manager = ServiceUtils.validateServiceInitialized(
+      this.manager,
+      "Transaction service",
+    );
+
+    return await ServiceUtils.withServiceError(
+      async () => {
+        // Search through recent history entries for matching payment hash
+        const historyEntries = await manager.history.getPaginatedHistory(
+          0,
+          100,
+        );
+
+        for (const entry of historyEntries) {
+          // Check if this entry has a matching quoteId (which serves as payment_hash)
+          if (
+            (entry.type === "mint" || entry.type === "melt") &&
+            entry.quoteId === quoteId
+          ) {
+            return entry;
+          }
+        }
+
+        return null;
+      },
+      "get transaction",
+      { quoteId },
+    );
+  }
+
+  async checkQuoteStatus(
+    quoteId: string,
+    mintUrl: string,
+  ): Promise<MintQuote | MeltQuote | null> {
+    return await ServiceUtils.withServiceError(
+      async () => {
+        // Try to get mint quote first
+        const mintQuote =
+          await this.repositories!.mintQuoteRepository.getMintQuote(
+            mintUrl,
+            quoteId,
+          );
+        if (mintQuote) return mintQuote;
+
+        // If not found, try to get melt quote
+        const meltQuote =
+          await this.repositories!.meltQuoteRepository.getMeltQuote(
+            mintUrl,
+            quoteId,
+          );
+
+        return meltQuote;
+      },
+      "check quote status",
+      { quoteId, mintUrl },
     );
   }
 
@@ -460,8 +451,6 @@ export class WalletService implements ServiceLifecycle {
       });
       this.database = null;
     }
-    await this.quoteService.cleanup();
-    await this.eventService.cleanup();
     this.manager = null;
   }
 }

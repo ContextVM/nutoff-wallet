@@ -25,17 +25,27 @@ import {
   SendCashuResultSchema,
 } from "../types/wallet-api.js";
 import { WalletService } from "../services/WalletService.js";
-import { TransactionService } from "../services/TransactionService.js";
-import { McpToolFactory } from "./McpToolFactory.js";
 import type { HistoryEntry, MintQuote } from "coco-cashu-core";
 import type { MeltQuote } from "../types/wallet-api.js";
 import { getEncodedToken } from "@cashu/cashu-ts";
+import {
+  handleAddMint,
+  handleGetBalance,
+  handleListMints,
+  handleListTransactions,
+  handleLookupQuote,
+  handleMakeInvoice,
+  handlePayInvoice,
+  handleReceiveCashu,
+  handleRemoveMint,
+  handleSendCashu,
+  handleTrustMint,
+  handleUntrustMint,
+} from "./toolHandlers.js";
 
-// TODO: Still needing tools to create cashu tokens
 export class CashuMcpServer {
   private server: McpServer;
   private walletService: WalletService;
-  private transactionService: TransactionService;
   private transport: StdioServerTransport | null = null;
 
   constructor(config: McpServerConfig) {
@@ -46,7 +56,6 @@ export class CashuMcpServer {
 
     // Initialize services
     this.walletService = new WalletService();
-    this.transactionService = new TransactionService();
 
     // Register all NWC tools
     this.registerWalletTools();
@@ -55,7 +64,6 @@ export class CashuMcpServer {
   private registerWalletTools(): void {
     const context: ToolHandlerContext = {
       walletService: this.walletService,
-      transactionService: this.transactionService,
     };
 
     // Pay Invoice Tool
@@ -67,10 +75,25 @@ export class CashuMcpServer {
         inputSchema: PayInvoiceParamsSchema.shape,
         outputSchema: MeltQuoteSchema.shape,
       },
-      McpToolFactory.createToolHandler(
-        this.handlePayInvoice.bind(this),
-        context,
-      ),
+      async (params) => {
+        try {
+          const result = await handlePayInvoice(params, context);
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(result, null, 2),
+              },
+            ],
+            structuredContent: result,
+          };
+        } catch (error) {
+          if (error instanceof Error && "code" in error) {
+            throw new Error(`${(error as any).code}: ${error.message}`);
+          }
+          throw error;
+        }
+      },
     );
 
     // Make Invoice Tool
@@ -82,10 +105,25 @@ export class CashuMcpServer {
         inputSchema: MakeInvoiceParamsSchema.shape,
         outputSchema: MintQuoteSchema.shape,
       },
-      McpToolFactory.createToolHandler(
-        this.handleMakeInvoice.bind(this),
-        context,
-      ),
+      async (params) => {
+        try {
+          const result = await handleMakeInvoice(params, context);
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(result, null, 2),
+              },
+            ],
+            structuredContent: result,
+          };
+        } catch (error) {
+          if (error instanceof Error && "code" in error) {
+            throw new Error(`${(error as any).code}: ${error.message}`);
+          }
+          throw error;
+        }
+      },
     );
 
     // Lookup Quote Tool
@@ -99,10 +137,26 @@ export class CashuMcpServer {
         },
         outputSchema: MintQuoteSchema.shape || {},
       },
-      McpToolFactory.createToolHandler(
-        this.handleLookupQuote.bind(this),
-        context,
-      ),
+      async (params) => {
+        try {
+          const result = await handleLookupQuote(params, context);
+          const structuredContent = result || {};
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(structuredContent, null, 2),
+              },
+            ],
+            structuredContent,
+          };
+        } catch (error) {
+          if (error instanceof Error && "code" in error) {
+            throw new Error(`${(error as any).code}: ${error.message}`);
+          }
+          throw error;
+        }
+      },
     );
 
     // List Transactions Tool
@@ -116,11 +170,26 @@ export class CashuMcpServer {
           transactions: z.array(HistoryEntrySchema),
         },
       },
-      McpToolFactory.createArrayToolHandler(
-        this.handleListTransactions.bind(this),
-        context,
-        "transactions",
-      ),
+      async (params) => {
+        try {
+          const result = await handleListTransactions(params, context);
+          const structuredContent = { transactions: result };
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(structuredContent, null, 2),
+              },
+            ],
+            structuredContent,
+          };
+        } catch (error) {
+          if (error instanceof Error && "code" in error) {
+            throw new Error(`${(error as any).code}: ${error.message}`);
+          }
+          throw error;
+        }
+      },
     );
 
     // Get Balance Tool
@@ -132,10 +201,25 @@ export class CashuMcpServer {
         inputSchema: GetBalanceParamsSchema.shape,
         outputSchema: BalanceResultSchema.shape,
       },
-      McpToolFactory.createToolHandler(
-        this.handleGetBalance.bind(this),
-        context,
-      ),
+      async (params) => {
+        try {
+          const result = await handleGetBalance(params, context);
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(result, null, 2),
+              },
+            ],
+            structuredContent: result,
+          };
+        } catch (error) {
+          if (error instanceof Error && "code" in error) {
+            throw new Error(`${(error as any).code}: ${error.message}`);
+          }
+          throw error;
+        }
+      },
     );
 
     // Add Mint Tool
@@ -147,7 +231,25 @@ export class CashuMcpServer {
         inputSchema: AddMintParamsSchema.shape,
         outputSchema: MintInfoSchema.shape,
       },
-      McpToolFactory.createToolHandler(this.handleAddMint.bind(this), context),
+      async (params) => {
+        try {
+          const result = await handleAddMint(params, context);
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(result, null, 2),
+              },
+            ],
+            structuredContent: result,
+          };
+        } catch (error) {
+          if (error instanceof Error && "code" in error) {
+            throw new Error(`${(error as any).code}: ${error.message}`);
+          }
+          throw error;
+        }
+      },
     );
 
     // List Mints Tool
@@ -159,10 +261,25 @@ export class CashuMcpServer {
         inputSchema: ListMintsParamsSchema.shape,
         outputSchema: MintsListResultSchema.shape,
       },
-      McpToolFactory.createToolHandler(
-        this.handleListMints.bind(this),
-        context,
-      ),
+      async (params) => {
+        try {
+          const result = await handleListMints(params, context);
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(result, null, 2),
+              },
+            ],
+            structuredContent: result,
+          };
+        } catch (error) {
+          if (error instanceof Error && "code" in error) {
+            throw new Error(`${(error as any).code}: ${error.message}`);
+          }
+          throw error;
+        }
+      },
     );
 
     // Trust Mint Tool
@@ -174,10 +291,25 @@ export class CashuMcpServer {
         inputSchema: TrustMintParamsSchema.shape,
         outputSchema: MintInfoSchema.shape,
       },
-      McpToolFactory.createToolHandler(
-        this.handleTrustMint.bind(this),
-        context,
-      ),
+      async (params) => {
+        try {
+          const result = await handleTrustMint(params, context);
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(result, null, 2),
+              },
+            ],
+            structuredContent: result,
+          };
+        } catch (error) {
+          if (error instanceof Error && "code" in error) {
+            throw new Error(`${(error as any).code}: ${error.message}`);
+          }
+          throw error;
+        }
+      },
     );
 
     // Untrust Mint Tool
@@ -189,10 +321,25 @@ export class CashuMcpServer {
         inputSchema: UntrustMintParamsSchema.shape,
         outputSchema: MintInfoSchema.shape,
       },
-      McpToolFactory.createToolHandler(
-        this.handleUntrustMint.bind(this),
-        context,
-      ),
+      async (params) => {
+        try {
+          const result = await handleUntrustMint(params, context);
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(result, null, 2),
+              },
+            ],
+            structuredContent: result,
+          };
+        } catch (error) {
+          if (error instanceof Error && "code" in error) {
+            throw new Error(`${(error as any).code}: ${error.message}`);
+          }
+          throw error;
+        }
+      },
     );
 
     // Remove Mint Tool
@@ -206,10 +353,26 @@ export class CashuMcpServer {
           success: z.boolean(),
         },
       },
-      McpToolFactory.createSuccessToolHandler(
-        this.handleRemoveMint.bind(this),
-        context,
-      ),
+      async (params) => {
+        try {
+          await handleRemoveMint(params, context);
+          const structuredContent = { success: true };
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(structuredContent, null, 2),
+              },
+            ],
+            structuredContent,
+          };
+        } catch (error) {
+          if (error instanceof Error && "code" in error) {
+            throw new Error(`${(error as any).code}: ${error.message}`);
+          }
+          throw error;
+        }
+      },
     );
 
     // Receive Cashu Tokens Tool
@@ -221,10 +384,25 @@ export class CashuMcpServer {
         inputSchema: ReceiveCashuParamsSchema.shape,
         outputSchema: ReceiveCashuResultSchema.shape,
       },
-      McpToolFactory.createToolHandler(
-        this.handleReceiveCashu.bind(this),
-        context,
-      ),
+      async (params) => {
+        try {
+          const result = await handleReceiveCashu(params, context);
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(result, null, 2),
+              },
+            ],
+            structuredContent: result,
+          };
+        } catch (error) {
+          if (error instanceof Error && "code" in error) {
+            throw new Error(`${(error as any).code}: ${error.message}`);
+          }
+          throw error;
+        }
+      },
     );
 
     // Send Cashu Tokens Tool
@@ -236,170 +414,26 @@ export class CashuMcpServer {
         inputSchema: SendCashuParamsSchema.shape,
         outputSchema: SendCashuResultSchema.shape,
       },
-      McpToolFactory.createToolHandler(
-        this.handleSendCashu.bind(this),
-        context,
-      ),
+      async (params) => {
+        try {
+          const result = await handleSendCashu(params, context);
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(result, null, 2),
+              },
+            ],
+            structuredContent: result,
+          };
+        } catch (error) {
+          if (error instanceof Error && "code" in error) {
+            throw new Error(`${(error as any).code}: ${error.message}`);
+          }
+          throw error;
+        }
+      },
     );
-  }
-
-  private async handlePayInvoice(
-    params: z.infer<typeof PayInvoiceParamsSchema>,
-    context: ToolHandlerContext,
-  ): Promise<MeltQuote> {
-    const { invoice, mintUrl } = params;
-
-    // Get manager directly for streamlined operations
-    const manager = context.walletService.getManager();
-    if (!manager) {
-      throw new Error("Wallet service not initialized");
-    }
-
-    // Resolve mint URL
-    const targetMintUrl =
-      mintUrl || (await context.walletService.getDefaultMint());
-
-    // Create and pay melt quote directly using Manager
-    const meltQuote = await manager.quotes.createMeltQuote(
-      targetMintUrl,
-      invoice,
-    );
-    await manager.quotes.payMeltQuote(targetMintUrl, meltQuote.quote);
-
-    // Return the melt quote directly (no need to check status again)
-    return meltQuote as MeltQuote;
-  }
-
-  private async handleMakeInvoice(
-    params: z.infer<typeof MakeInvoiceParamsSchema>,
-    context: ToolHandlerContext,
-  ): Promise<z.infer<typeof MintQuoteSchema>> {
-    const { amount, mintUrl } = params;
-
-    // Get manager directly for streamlined operations
-    const manager = context.walletService.getManager();
-    if (!manager) {
-      throw new Error("Wallet service not initialized");
-    }
-
-    // Resolve mint URL and create mint quote directly
-    const targetMintUrl =
-      mintUrl || (await context.walletService.getDefaultMint());
-    const mintQuote = await manager.quotes.createMintQuote(
-      targetMintUrl,
-      amount,
-    );
-
-    return mintQuote;
-  }
-
-  private async handleLookupQuote(
-    params: { quoteId: string },
-    context: ToolHandlerContext,
-  ): Promise<z.infer<typeof MintQuoteSchema> | null> {
-    const { quoteId } = params;
-
-    // Use the quote service directly for streamlined operations
-    const quote = await context.walletService
-      .getQuoteService()
-      .checkQuoteStatus(quoteId);
-
-    // Return MintQuote as a plain object for MCP compatibility
-    return quote as MintQuote;
-  }
-
-  private async handleListTransactions(
-    params: z.infer<typeof ListTransactionsParamsSchema>,
-    context: ToolHandlerContext,
-  ): Promise<HistoryEntry[]> {
-    const { limit, offset } = params;
-
-    const transactions = await context.transactionService.listTransactions({
-      limit,
-      offset,
-    });
-
-    return transactions;
-  }
-
-  private async handleGetBalance(
-    params: z.infer<typeof GetBalanceParamsSchema>,
-    context: ToolHandlerContext,
-  ): Promise<z.infer<typeof BalanceResultSchema>> {
-    const balance = await context.walletService.getBalance();
-
-    return balance;
-  }
-
-  private async handleAddMint(
-    params: z.infer<typeof AddMintParamsSchema>,
-    context: ToolHandlerContext,
-  ): Promise<z.infer<typeof MintInfoSchema>> {
-    return await context.walletService.addMint(params);
-  }
-
-  private async handleListMints(
-    params: z.infer<typeof ListMintsParamsSchema>,
-    context: ToolHandlerContext,
-  ): Promise<z.infer<typeof MintsListResultSchema>> {
-    return await context.walletService.listMints(params);
-  }
-
-  private async handleTrustMint(
-    params: z.infer<typeof TrustMintParamsSchema>,
-    context: ToolHandlerContext,
-  ): Promise<z.infer<typeof MintInfoSchema>> {
-    return await context.walletService.trustMint(params);
-  }
-
-  private async handleUntrustMint(
-    params: z.infer<typeof UntrustMintParamsSchema>,
-    context: ToolHandlerContext,
-  ): Promise<z.infer<typeof MintInfoSchema>> {
-    return await context.walletService.untrustMint(params);
-  }
-
-  private async handleRemoveMint(
-    params: z.infer<typeof RemoveMintParamsSchema>,
-    context: ToolHandlerContext,
-  ): Promise<void> {
-    await context.walletService.removeMint(params);
-  }
-
-  // ============================================================================
-  // Cashu Token Operations Handlers
-  // ============================================================================
-
-  private async handleReceiveCashu(
-    params: z.infer<typeof ReceiveCashuParamsSchema>,
-    context: ToolHandlerContext,
-  ): Promise<z.infer<typeof ReceiveCashuResultSchema>> {
-    const { token } = params;
-    const result = await context.walletService.receiveTokens(token);
-    // Convert the current result to match the expected schema
-    return {
-      success: result.success,
-    };
-  }
-
-  private async handleSendCashu(
-    params: z.infer<typeof SendCashuParamsSchema>,
-    context: ToolHandlerContext,
-  ): Promise<z.infer<typeof SendCashuResultSchema>> {
-    const { amount, mintUrl } = params;
-    const targetMintUrl =
-      mintUrl || (await context.walletService.getDefaultMint());
-    const result = await context.walletService.sendTokens(
-      amount,
-      targetMintUrl,
-    );
-    const encodedToken = getEncodedToken(result.token);
-    // Convert Token object to string for MCP transport
-    return {
-      token: encodedToken,
-      amount: result.amount,
-      mintUrl: targetMintUrl,
-    };
   }
 
   async initializeWallet(config: {
@@ -408,12 +442,6 @@ export class CashuMcpServer {
     trustedMints: string[];
   }): Promise<void> {
     await this.walletService.initialize(config);
-
-    // Initialize transaction service with the manager from wallet service
-    const manager = this.walletService.getManager();
-    if (manager) {
-      await this.transactionService.initialize(manager);
-    }
 
     console.error(
       "McpServer wallet initialized with consolidated service architecture",

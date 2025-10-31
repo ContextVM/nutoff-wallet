@@ -25,23 +25,6 @@ export class ServiceUtils {
   }
 
   /**
-   * Standardize parameter ordering for mint-related operations
-   * Always use: mintUrl first, then other parameters
-   */
-  static standardizeMintParams(
-    mintUrl?: string,
-    ...otherParams: any[]
-  ): [string, ...any[]] {
-    if (!mintUrl) {
-      throw createWalletApiError(
-        "MINT_URL_REQUIRED",
-        "Mint URL is required for this operation",
-      );
-    }
-    return [mintUrl, ...otherParams];
-  }
-
-  /**
    * Create consistent error handling wrapper for service methods
    */
   static async withServiceError<T>(

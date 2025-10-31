@@ -1,6 +1,5 @@
 import { z } from "zod";
 import type { WalletService } from "../services/WalletService.js";
-import type { TransactionService } from "../services/TransactionService.js";
 
 // MCP Server Configuration
 export const McpServerConfigSchema = z.object({
@@ -32,7 +31,6 @@ export type ServerConfig = z.infer<typeof ServerConfigSchema>;
 // Tool Handler Types
 export interface ToolHandlerContext {
   walletService: WalletService;
-  transactionService: TransactionService;
 }
 
 // MCP Error Types - Simplified
