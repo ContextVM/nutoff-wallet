@@ -6,6 +6,7 @@ import type {
   ListMintsParamsSchema,
   ListTransactionsParamsSchema,
   MakeInvoiceParamsSchema,
+  MeltQuoteSchema,
   MintInfoSchema,
   MintQuoteSchema,
   MintsListResultSchema,
@@ -25,7 +26,7 @@ import { getEncodedToken, type MeltQuoteResponse } from "@cashu/cashu-ts";
 export async function handlePayInvoice(
   params: z.infer<typeof PayInvoiceParamsSchema>,
   context: ToolHandlerContext,
-): Promise<MeltQuoteResponse> {
+): Promise<z.infer<typeof MeltQuoteSchema>> {
   const { invoice, mintUrl } = params;
 
   const manager = context.walletService.getManager();
@@ -42,7 +43,12 @@ export async function handlePayInvoice(
   );
   await manager.quotes.payMeltQuote(targetMintUrl, meltQuote.quote);
 
-  return meltQuote;
+  // Ensure the response matches the MeltQuoteSchema
+  return {
+    ...meltQuote,
+    state: 'PAID',
+    mintUrl: targetMintUrl,
+  };
 }
 
 export async function handleMakeInvoice(

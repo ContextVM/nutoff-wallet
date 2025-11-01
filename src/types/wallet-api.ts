@@ -63,9 +63,10 @@ export const MeltQuoteSchema = z.object({
           .optional(),
       }),
     )
+    .nullable()
     .optional(),
   unit: z.string(),
-  mintUrl: z.string(),
+  mintUrl: z.string().optional(),
   error: z.string().optional(),
   code: z.number().optional(),
   detail: z.string().optional(),
